@@ -1,4 +1,5 @@
 import logging
+import os
 from pydantic_settings import BaseSettings
 
 
@@ -31,3 +32,8 @@ logging.basicConfig(
     level=settings.log_level,
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
+os.environ.setdefault("TAVILY_API_KEY", settings.tavily_api_key)
+os.environ.setdefault("GOOGLE_API_KEY", settings.google_api_key)
+os.environ.setdefault("LLM_PROVIDER", settings.llm_provider)
+os.environ.setdefault("LLM_MODEL", settings.llm_model)
+os.environ.setdefault("WEB_SEARCH_PROVIDER", settings.web_search_provider)

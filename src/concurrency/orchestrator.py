@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 
 async def _fetch_safe(name: str, coro, timeout: float) -> list[Source]:
-    """Run one fetcher with a timeout. Returns [] on any failure."""
     t0 = time.perf_counter()
     try:
         async with asyncio.timeout(timeout):
@@ -34,33 +33,35 @@ async def _fetch_safe(name: str, coro, timeout: float) -> list[Source]:
                        "seconds": round(time.perf_counter() - t0, 2)})
         return []
 
-
 async def fetch_all(
     query: str,
     *,
     sources: Sequence[str] = ("wiki", "arxiv", "web"),
 ) -> tuple[list[Source], dict[str, float]]:
-    """Fetch all requested sources in parallel. Returns (sources, timings)."""
     timeout = settings.per_source_timeout_seconds
     max_results = settings.max_sources_per_query
-    provider = get_web_search_provider()
     timings: dict[str, float] = {}
 
     async with httpx.AsyncClient() as client:
-        coros = {}
+        tasks = []
+        names = []
+
         if "wiki" in sources:
-            coros["wiki"] = fetch_wikipedia(query, max_results=max_results, client=client)
+            names.append("wiki")
+            tasks.append(_fetch_safe("wiki",
+                fetch_wikipedia(query, max_results=max_results, client=client), timeout))
         if "arxiv" in sources:
-            coros["arxiv"] = fetch_arxiv(query, max_results=max_results, client=client)
+            names.append("arxiv")
+            tasks.append(_fetch_safe("arxiv",
+                fetch_arxiv(query, max_results=max_results, client=client), timeout))
         if "web" in sources:
-            coros["web"] = fetch_web(query, max_results=max_results,
-                                     provider=provider, client=client)
+            provider = get_web_search_provider()
+            names.append("web")
+            tasks.append(_fetch_safe("web",
+                fetch_web(query, max_results=max_results, provider=provider, client=client), timeout))
 
         t0 = time.perf_counter()
-        results = await asyncio.gather(
-            *[_fetch_safe(name, coro, timeout) for name, coro in coros.items()],
-            return_exceptions=True,
-        )
+        results = await asyncio.gather(*tasks, return_exceptions=True)
         timings["total_parallel"] = round(time.perf_counter() - t0, 2)
 
     all_sources: list[Source] = []
