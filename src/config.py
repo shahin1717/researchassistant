@@ -1,4 +1,6 @@
+import logging
 from pydantic_settings import BaseSettings
+
 
 class Settings(BaseSettings):
     # LLM
@@ -24,3 +26,8 @@ class Settings(BaseSettings):
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 settings = Settings()
+
+logging.basicConfig(
+    level=settings.log_level,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
