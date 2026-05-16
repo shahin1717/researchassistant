@@ -11,6 +11,7 @@ htmlcov/
 
 # Project
 .env
+.env.example
 *.db
 *.sqlite3
 *.log
