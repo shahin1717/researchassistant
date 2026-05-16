@@ -1,6 +1,19 @@
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
+    # LLM
+    llm_provider: str = "gemini"
+    llm_model: str = "gemini-2.0-flash"
+    anthropic_api_key: str = ""
+    openai_api_key: str = ""
+    google_api_key: str = ""
+
+    # Web search
+    web_search_provider: str = "tavily"
+    tavily_api_key: str = ""
+    serper_api_key: str = ""
+
+    # SE layer
     log_level: str = "INFO"
     cache_dir: str = "./.cache"
     cache_ttl_seconds: int = 86400
