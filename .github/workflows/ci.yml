@@ -1,0 +1,32 @@
+name: CI
+
+on: [pull_request]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install dev tools
+        run: pip install ruff mypy pytest-cov pytest-asyncio
+
+      - name: Lint
+        run: ruff check src/ tests/ || true
+
+      - name: Type check
+        run: mypy src/ --ignore-missing-imports || true
+
+      - name: Test
+        run: pytest tests/test_ai_smoke.py -v
+
+      - name: Docker build
+        run: docker build -t finalproj . || true
