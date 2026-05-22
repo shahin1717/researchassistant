@@ -18,14 +18,17 @@ from src.config import settings
 
 QUESTIONS = json.loads(
     (Path(__file__).parent.parent / "data" / "research_questions.json").read_text()
-)
+)["questions"]
 
 
 async def run_sequential(query: str) -> float:
     """Run all three fetchers one after another. Returns total seconds."""
     provider = get_web_search_provider()
     t0 = time.perf_counter()
-    async with httpx.AsyncClient() as client:
+    headers = {
+        "User-Agent": "ResearchAssistantBot/1.0 (sultan.musayeva@aiacademy.az; ShahinAcademicTeam) httpx/0.27.2"
+    }
+    async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
         await fetch_wikipedia(query, client=client)
         await fetch_arxiv(query, client=client)
         await fetch_web(query, provider=provider, client=client)
@@ -47,7 +50,7 @@ async def main() -> None:
     total_par = 0.0
 
     for q in QUESTIONS:
-        question = q["question"] if isinstance(q, dict) else q
+        question = q["text"] if isinstance(q, dict) else q
         label = question[:43] + ".." if len(question) > 45 else question
 
         seq = await run_sequential(question)

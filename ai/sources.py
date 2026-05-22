@@ -130,8 +130,8 @@ async def fetch_wikipedia(
 # arXiv
 # ---------------------------------------------------------------------------
 
-_ARXIV_URL = "http://export.arxiv.org/api/query"
-_ATOM_NS = "{http://www.w3.org/2005/Atom}"
+_ARXIV_URL = "https://export.arxiv.org/api/query"
+_ATOM_NS = "{https://www.w3.org/2005/Atom}"
 
 
 async def fetch_arxiv(
