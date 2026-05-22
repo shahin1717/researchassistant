@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import os
 import time
+from collections import deque
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import TypeVar
 
 import ai
@@ -18,6 +21,73 @@ from tenacity import AsyncRetrying, RetryCallState, retry_if_exception_type, sto
 T = TypeVar("T")
 
 
+@dataclass(slots=True)
+class _TokenUsage:
+    timestamp: float
+    tokens: int
+
+
+class TokenBudgetLimiter:
+    """Sliding-window token budget limiter for approximate TPM enforcement."""
+
+    def __init__(
+        self,
+        tokens_per_window: int,
+        *,
+        window_seconds: float = 60.0,
+        sleeper: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        if tokens_per_window <= 0:
+            raise ValueError("tokens_per_window must be > 0")
+        if window_seconds <= 0:
+            raise ValueError("window_seconds must be > 0")
+        self._tokens_per_window = tokens_per_window
+        self._window_seconds = window_seconds
+        self._sleep = sleeper
+        self._clock = clock
+        self._lock = asyncio.Lock()
+        self._events: deque[_TokenUsage] = deque()
+
+    def _prune(self, now: float) -> None:
+        cutoff = now - self._window_seconds
+        while self._events and self._events[0].timestamp <= cutoff:
+            self._events.popleft()
+
+    def _used_tokens(self) -> int:
+        return sum(event.tokens for event in self._events)
+
+    def _seconds_until_available(self, now: float, requested_tokens: int) -> float:
+        overflow = self._used_tokens() + requested_tokens - self._tokens_per_window
+        if overflow <= 0:
+            return 0.0
+
+        reclaimed = 0
+        for event in self._events:
+            reclaimed += event.tokens
+            if reclaimed >= overflow:
+                return max(0.0, (event.timestamp + self._window_seconds) - now)
+
+        return self._window_seconds
+
+    async def acquire(self, tokens: int) -> float:
+        if tokens <= 0:
+            return 0.0
+
+        waited = 0.0
+        while True:
+            async with self._lock:
+                now = self._clock()
+                self._prune(now)
+                if self._used_tokens() + tokens <= self._tokens_per_window:
+                    self._events.append(_TokenUsage(timestamp=now, tokens=tokens))
+                    return waited
+                wait_seconds = self._seconds_until_available(now, tokens)
+
+            await self._sleep(wait_seconds)
+            waited += wait_seconds
+
+
 class AIService:
     """Thin provider-agnostic wrapper around the `ai.*` functions."""
 
@@ -27,6 +97,10 @@ class AIService:
         max_parallel: int | None = None,
         source_timeout_seconds: float | None = None,
         synthesize_timeout_seconds: float | None = None,
+        token_budget_tpm: int | None = None,
+        token_budget_window_seconds: float | None = None,
+        rate_limit_sleep: Callable[[float], Awaitable[None]] | None = None,
+        rate_limit_clock: Callable[[], float] | None = None,
         max_attempts: int = 3,
         logger: logging.Logger | None = None,
     ) -> None:
@@ -40,6 +114,26 @@ class AIService:
             synthesize_timeout_seconds
             if synthesize_timeout_seconds is not None
             else _read_float_env("SYNTHESIZE_TIMEOUT_SECONDS", 30.0)
+        )
+        self._token_budget_tpm = (
+            token_budget_tpm
+            if token_budget_tpm is not None
+            else _read_int_env("TOKEN_BUDGET_TPM", 0)
+        )
+        self._token_budget_window_seconds = (
+            token_budget_window_seconds
+            if token_budget_window_seconds is not None
+            else _read_float_env("TOKEN_BUDGET_WINDOW_SECONDS", 60.0)
+        )
+        self._rate_limiter = (
+            None
+            if self._token_budget_tpm <= 0
+            else TokenBudgetLimiter(
+                self._token_budget_tpm,
+                window_seconds=self._token_budget_window_seconds,
+                sleeper=rate_limit_sleep or asyncio.sleep,
+                clock=rate_limit_clock or time.monotonic,
+            )
         )
         self._max_attempts = max_attempts
         self._semaphore = asyncio.Semaphore(self._max_parallel)
@@ -56,6 +150,18 @@ class AIService:
     @property
     def synthesize_timeout_seconds(self) -> float:
         return self._synthesize_timeout_seconds
+
+    @staticmethod
+    def _estimate_tokens(operation: str, args: tuple[object, ...], kwargs: dict[str, object]) -> int:
+        parts: list[str] = [operation]
+        parts.extend(str(value) for value in args)
+        parts.extend(
+            f"{key}={value}"
+            for key, value in sorted(kwargs.items())
+            if key not in {"client", "provider", "llm"}
+        )
+        estimated = max(1, math.ceil(len(" ".join(parts)) / 4))
+        return estimated
 
     def _retry_exceptions(self) -> tuple[type[BaseException], ...]:
         return (ProviderError, TimeoutError)
@@ -81,6 +187,18 @@ class AIService:
     ) -> T:
         start = time.monotonic()
         retry_exceptions = self._retry_exceptions()
+        estimated_tokens = self._estimate_tokens(operation, args, kwargs)
+        if self._rate_limiter is not None:
+            waited_seconds = await self._rate_limiter.acquire(estimated_tokens)
+            if waited_seconds > 0:
+                self._logger.info(
+                    "ai_rate_limit_wait",
+                    extra={
+                        "operation": operation,
+                        "tokens": estimated_tokens,
+                        "waited_seconds": round(waited_seconds, 2),
+                    },
+                )
         self._logger.info(
             "ai_call_start",
             extra={"operation": operation, "timeout_seconds": timeout_seconds},
