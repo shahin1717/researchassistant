@@ -97,7 +97,7 @@ class CacheStore:
         cutoff = time() - ttl_seconds
         with self._lock:
             cursor = self._conn.execute(
-                "DELETE FROM cache_entries WHERE created_at < ?",
+                "DELETE FROM cache_entries WHERE created_at <= ?",
                 (cutoff,),
             )
             deleted = cursor.rowcount if cursor.rowcount is not None else 0
