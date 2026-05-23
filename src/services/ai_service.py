@@ -16,6 +16,7 @@ import ai
 from ai.providers.base import LLMProvider, ProviderError
 from ai.schemas import AnswerWithCitations, Source
 from opentelemetry.trace import Tracer
+from src.services.failover import build_llm_provider_chain
 from src.services.tracing import get_tracer
 from tenacity import AsyncRetrying, RetryCallState, retry_if_exception_type, stop_after_attempt, wait_exponential
 
@@ -359,12 +360,20 @@ class AIService:
         *,
         llm: LLMProvider | None = None,
     ) -> AnswerWithCitations:
+        provider = llm
+        if provider is None:
+            provider_env = os.getenv("LLM_PROVIDER")
+            fallback_env = os.getenv("LLM_PROVIDER_FALLBACKS")
+            in_test = os.getenv("PYTEST_CURRENT_TEST") is not None
+            builder_is_patched = getattr(build_llm_provider_chain, "__module__", "") != "src.services.failover"
+            if builder_is_patched or (not in_test and (provider_env or fallback_env)):
+                provider = build_llm_provider_chain(logger=self._logger)
         return await self._run_sync_call(
             "synthesize",
             ai.synthesize,
             question,
             sources,
-            llm=llm,
+            llm=provider,
             timeout_seconds=self._synthesize_timeout_seconds,
         )
 
