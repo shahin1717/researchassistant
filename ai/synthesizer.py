@@ -91,3 +91,36 @@ def synthesize(
         answer=answer_text,
         citations=citations,
     )
+
+
+def synthesize_stream(
+    question: str,
+    sources: list[Source],
+    *,
+    llm: LLMProvider | None = None,
+) -> "Iterator[str]":
+    """Yield partial answer text as produced by the LLM's streaming API.
+
+    If the provided `llm` exposes a `stream_complete(prompt)` generator, this
+    will yield whatever that generator yields. Otherwise it falls back to
+    calling `complete()` and yielding the full answer once.
+    """
+    if not question.strip():
+        raise ValueError("question must be non-empty")
+    if not sources:
+        raise ValueError("sources must be non-empty")
+
+    llm = llm or get_llm()
+    prompt = _PROMPT_TEMPLATE.format(
+        question=question.strip(),
+        source_block=_format_source_block(sources),
+    )
+
+    stream_fn = getattr(llm, "stream_complete", None)
+    if callable(stream_fn):
+        for chunk in stream_fn(prompt):
+            yield str(chunk)
+        return
+
+    # Fallback: single chunk
+    yield llm.complete(prompt).strip()
