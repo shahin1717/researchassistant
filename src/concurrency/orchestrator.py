@@ -34,10 +34,16 @@ async def fetch_all(
     names = []
 
     async def _timed(name: str, coro) -> tuple[str, float, object]:
-        """Wrap a coroutine to record its individual wall-clock time."""
+        """ Wrap a coroutine with a per-source timeout and wall-clock timer.
+
+        asyncio.timeout() caps the TOTAL time for this source (including any
+        retries inside AIService), so one slow source never blocks the others
+        beyond per_source_timeout_seconds.
+        """
         t = time.perf_counter()
         try:
-            result = await coro
+            async with asyncio.timeout(settings.per_source_timeout_seconds):
+                result = await coro
         except Exception as exc:
             return name, round(time.perf_counter() - t, 2), exc
         return name, round(time.perf_counter() - t, 2), result
