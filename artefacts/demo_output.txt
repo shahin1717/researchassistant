@@ -1,0 +1,76 @@
+========================================================================
+Async Research Assistant — Demo Run
+Timestamp : 2026-05-23 18:03:13
+Mode      : live API calls
+Questions : 5
+========================================================================
+
+Q1 [EASY]: What is photosynthesis and what are its main stages?
+
+========================================================================
+Question: What is photosynthesis and what are its main stages?
+
+Photosynthesis is a biological process by which autotrophic organisms, such as plants, algae, and cyanobacteria, convert light energy into chemical energy to fuel their metabolism [5,6]. This vital process supplies
+
+References:
+[5] Photosynthesis - Wikipedia (web)
+    https://en.wikipedia.org/wiki/Photosynthesis
+[6] Stages of Photosynthesis and Factors Influencing It - Conduct Science (web)
+    https://conductscience.com/stages-of-photosynthesis-and-factors-influencing-it
+========================================================================
+
+Q2 [MEDIUM]: How do transformer-based language models handle long context windows?
+
+========================================================================
+Question: How do transformer-based language models handle long context windows?
+
+Transformer-based language models handle context through a self-attention mechanism, which requires each token to consider all preceding tokens as its context [4]. The context window represents the maximum sequence length a transformer can
+
+References:
+[4] Core Context Aware Transformers for Long Context Language ... (web)
+    https://openreview.net/forum?id=MAHPZNduS4&noteId=DuNYrnf4OU
+========================================================================
+
+Q3 [MEDIUM]: What were the main causes of the 2008 financial crisis?
+
+========================================================================
+Question: What were the main causes of the 2008 financial crisis?
+
+The 2008 financial crisis began with an epicenter focused heavily on mortgage-backed securities (MBS) [3]. A major contributing factor was the Wall Street practice of dispersing credit risk among multiple financial institutions [5]. While this practice allowed firms to free up capital and conduct more business by passing risk along, it was accompanied by a wave of lending abuses in the mortgage industry [5]. Ultimately, this system failed because the underlying financial risk still remained within the network [5].
+
+References:
+[3] Financial Bubbles, Real Estate bubbles, Derivative Bubbles, and the Financial and Economic Crisis (arxiv)
+    http://arxiv.org/abs/0905.0220v1
+[5] The Causes of the 2008 Financial Crisis | FRONTLINE (web)
+    https://www.pbslearningmedia.org/resource/fl30.socst.econ.causes/the-causes-of-the-2008-financial-crisis-frontline
+========================================================================
+
+Q4 [HARD]: What is the current state of fusion energy research?
+
+========================================================================
+Question: What is the current state of fusion energy research?
+
+Fusion energy research, which has been studied by academic institutions and government laboratories since the 1950s, is divided into two major branches: magnetic confinement fusion (MCF) and inertial confinement fusion (ICF) [4,6]. Additionally, targeted programs like the US ARPA-E ALPHA program have focused on advancing pulsed, intermediate-density fusion approaches—such as magneto-inertial fusion and Z-pinch variants—to develop lower-cost pathways to commercial power [1]. Recent developments and milestones in the field center around reactor advancements, breakthroughs in fusion energy, and achieving net energy gain [5].
+
+References:
+[1] Retrospective of the ARPA-E ALPHA fusion program (arxiv)
+    http://arxiv.org/abs/1907.09921v2
+[4] The Current State of Nuclear Fusion Research: A Review and ... (web)
+    https://www.worldscholarsreview.org/article/the-current-state-of-nuclear-fusion-research-a-review-and-assessment-of-leading-technologies
+[5] Where are we with nuclear fusion? : r/AskPhysics - Reddit (web)
+    https://www.reddit.com/r/AskPhysics/comments/1fkhm0l/where_are_we_with_nuclear_fusion
+[6] Fusion in the United States - US Fusion Energy (web)
+    https://usfusionenergy.org/fusion-united-states
+========================================================================
+
+Q5 [HARD]: How does CRISPR-Cas9 gene editing work at a molecular level?
+
+========================================================================
+Question: How does CRISPR-Cas9 gene editing work at a molecular level?
+
+CRISPR-Cas9 is a component of bacterial immune systems that has been repurposed as a gene editing tool [6]. It acts like a precise pair of molecular scissors designed to cut target DNA sequences
+
+References:
+[6] What is CRISPR: Your Ultimate Guide | Synthego (web)
+    https://www.synthego.com/learn/crispr
+========================================================================
