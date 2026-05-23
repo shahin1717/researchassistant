@@ -118,25 +118,8 @@ def run_cost_report(logger: logging.Logger) -> int:
     try:
         store = CacheStore(db_path)
         total = store.total_spend()
-
-        with store._lock:
-            breakdown = store._conn.execute(
-                """
-                SELECT source, SUM(cost_usd) AS cost
-                FROM spend_log
-                GROUP BY source
-                ORDER BY cost DESC
-                """
-            ).fetchall()
-
-            expensive = store._conn.execute(
-                """
-                SELECT canonical_query, cost_usd, created_at
-                FROM spend_log
-                ORDER BY cost_usd DESC
-                LIMIT 5
-                """
-            ).fetchall()
+        breakdown = store.spend_breakdown()
+        expensive = store.most_expensive_queries(limit=5)
     except OSError as exc:
         logger.error("cost_report_failed", extra={"error": str(exc)})
         sys.stderr.write(f"Error: could not read telemetry database: {exc}\n")

@@ -45,12 +45,14 @@ class QueryCache:
         self._store.cleanup_expired(self._ttl_seconds)
         response_json = self._store.get(normalized_source, canonical_query)
         if response_json is None:
+            self._store.record_cache_event(normalized_source, canonical_query, "miss")
             self._logger.info(
                 "cache_miss",
                 extra={"source": normalized_source, "canonical_query": canonical_query},
             )
             return None
 
+        self._store.record_cache_event(normalized_source, canonical_query, "hit")
         now = datetime.now(UTC)
         result = QueryResult(
             source=normalized_source,
