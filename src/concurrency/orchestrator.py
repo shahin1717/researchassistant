@@ -14,6 +14,7 @@ from ai.schemas import Source
 from ai.sources import get_web_search_provider
 from src.config import settings
 from src.services.ai_service import AIService
+from src.services.tracing import get_tracer
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ async def fetch_all(
     Uses the retry and rate-limiting wrapper from AIService.
     """
     svc = ai_service or AIService()
-    tracer: Tracer = svc.tracer
+    tracer: Tracer = getattr(svc, "tracer", get_tracer(__name__))
     max_results = settings.max_sources_per_query
     timings: dict[str, float] = {}
 
