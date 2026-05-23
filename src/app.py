@@ -1,12 +1,16 @@
 """Streamlit web interface for the Async Research Assistant."""
 
 from __future__ import annotations
-
+import sys
+import os
 import asyncio
 from pathlib import Path
-
 import streamlit as st
 
+root_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if root_path not in sys.path:
+    sys.path.insert(0, root_path)
+    
 from src.cli import MAX_QUESTION_CHARS, format_answer, validate_question
 from src.config import settings
 from src.core.researcher import research
