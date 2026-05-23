@@ -386,6 +386,3 @@ if __name__ == "__main__":
 
     cache.set("web", "  Photosynthesis  ", '{"answer": "ok"}')
     hit = cache.get("web", "photosynthesis")
-
-    print(session)
-    print(hit.response_json if hit else "cache miss")
