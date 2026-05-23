@@ -82,6 +82,67 @@ def test_cli_source_parsing() -> None:
         parse_sources("wiki,books")
 
 
+
+def test_orchestrator_returns_per_source_timings(
+    monkeypatch: pytest.MonkeyPatch,
+    wiki_source: Source,
+    arxiv_source: Source,
+) -> None:
+    """fetch_all timings dict must contain a key per source plus total_parallel."""
+
+    class FakeAIService:
+        async def fetch_wikipedia(self, query: str, **kwargs: object) -> list[Source]:
+            return [wiki_source]
+
+        async def fetch_arxiv(self, query: str, **kwargs: object) -> list[Source]:
+            return [arxiv_source]
+
+        async def fetch_web(self, query: str, **kwargs: object) -> list[Source]:
+            return []
+
+    monkeypatch.setattr("src.concurrency.orchestrator.get_web_search_provider", lambda: object())
+
+    sources, timings = asyncio.run(
+        fetch_all("What is photosynthesis?", sources=("wiki", "arxiv", "web"), ai_service=FakeAIService())
+    )
+
+    assert "wiki" in timings
+    assert "arxiv" in timings
+    assert "web" in timings
+    assert "total_parallel" in timings
+    assert timings["wiki"] >= 0.0
+    assert timings["total_parallel"] >= 0.0
+
+
+def test_orchestrator_per_task_timeout_isolates_slow_source(
+    monkeypatch: pytest.MonkeyPatch,
+    wiki_source: Source,
+) -> None:
+    """A source that hangs is cut off by per-task timeout; others still return results."""
+
+    class FakeAIService:
+        async def fetch_wikipedia(self, query: str, **kwargs: object) -> list[Source]:
+            return [wiki_source]
+
+        async def fetch_arxiv(self, query: str, **kwargs: object) -> list[Source]:
+            await asyncio.sleep(9999)
+            return []
+
+        async def fetch_web(self, query: str, **kwargs: object) -> list[Source]:
+            return []
+
+    monkeypatch.setattr("src.concurrency.orchestrator.get_web_search_provider", lambda: object())
+    monkeypatch.setattr("src.concurrency.orchestrator.settings.per_source_timeout_seconds", 0.05)
+
+    sources, timings = asyncio.run(
+        fetch_all("What is photosynthesis?", sources=("wiki", "arxiv", "web"), ai_service=FakeAIService())
+    )
+
+    assert any(s.origin == "wikipedia" for s in sources)
+    assert timings.get("arxiv", 0) < 1.0
+    assert timings["total_parallel"] < 1.0
+
+
 def test_orchestrator_degrades_when_one_source_fails(
     monkeypatch: pytest.MonkeyPatch,
     wiki_source: Source,
