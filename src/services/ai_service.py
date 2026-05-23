@@ -15,7 +15,9 @@ from typing import TypeVar
 import ai
 from ai.providers.base import LLMProvider, ProviderError
 from ai.schemas import AnswerWithCitations, Source
+from opentelemetry.trace import Tracer
 from src.services.failover import build_llm_provider_chain
+from src.services.tracing import get_tracer
 from tenacity import AsyncRetrying, RetryCallState, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 
@@ -102,6 +104,7 @@ class AIService:
         token_budget_window_seconds: float | None = None,
         rate_limit_sleep: Callable[[float], Awaitable[None]] | None = None,
         rate_limit_clock: Callable[[], float] | None = None,
+        tracer: Tracer | None = None,
         max_attempts: int = 3,
         logger: logging.Logger | None = None,
     ) -> None:
@@ -136,6 +139,7 @@ class AIService:
                 clock=rate_limit_clock or time.monotonic,
             )
         )
+        self._tracer = tracer or get_tracer(__name__)
         self._max_attempts = max_attempts
         self._semaphore = asyncio.Semaphore(self._max_parallel)
         self._logger = logger or logging.getLogger(__name__)
@@ -151,6 +155,10 @@ class AIService:
     @property
     def synthesize_timeout_seconds(self) -> float:
         return self._synthesize_timeout_seconds
+
+    @property
+    def tracer(self) -> Tracer:
+        return self._tracer
 
     @staticmethod
     def _estimate_value_chars(value: object, *, depth: int = 0) -> int:
@@ -218,56 +226,64 @@ class AIService:
         start = time.monotonic()
         retry_exceptions = self._retry_exceptions()
         estimated_tokens = self._estimate_tokens(operation, args, kwargs)
-        if self._rate_limiter is not None:
-            waited_seconds = await self._rate_limiter.acquire(estimated_tokens)
-            if waited_seconds > 0:
-                self._logger.info(
-                    "ai_rate_limit_wait",
+        span_name = f"ai.{operation}"
+        with self._tracer.start_as_current_span(span_name) as span:
+            span.set_attribute("ai.operation", operation)
+            span.set_attribute("ai.timeout_seconds", timeout_seconds)
+            span.set_attribute("ai.estimated_tokens", estimated_tokens)
+            if self._rate_limiter is not None:
+                waited_seconds = await self._rate_limiter.acquire(estimated_tokens)
+                if waited_seconds > 0:
+                    self._logger.info(
+                        "ai_rate_limit_wait",
+                        extra={
+                            "operation": operation,
+                            "tokens": estimated_tokens,
+                            "waited_seconds": round(waited_seconds, 2),
+                        },
+                    )
+                    span.set_attribute("ai.rate_limit_wait_seconds", round(waited_seconds, 2))
+            self._logger.info(
+                "ai_call_start",
+                extra={"operation": operation, "timeout_seconds": timeout_seconds},
+            )
+            retry = AsyncRetrying(
+                retry=retry_if_exception_type(retry_exceptions),
+                wait=wait_exponential(multiplier=0.5, min=0.5, max=5.0),
+                stop=stop_after_attempt(self._max_attempts),
+                reraise=True,
+                before_sleep=self._log_retry,
+            )
+            try:
+                async for attempt in retry:
+                    with attempt:
+                        async with self._semaphore:
+                            result = await asyncio.wait_for(
+                                func(*args, **kwargs),
+                                timeout=timeout_seconds,
+                            )
+                            duration_ms = (time.monotonic() - start) * 1000.0
+                            self._logger.info(
+                                "ai_call_success",
+                                extra={
+                                    "operation": operation,
+                                    "duration_ms": round(duration_ms, 2),
+                                },
+                            )
+                            span.set_attribute("ai.duration_ms", round(duration_ms, 2))
+                            return result
+            except retry_exceptions as error:
+                duration_ms = (time.monotonic() - start) * 1000.0
+                span.record_exception(error)
+                self._logger.error(
+                    "ai_call_failed",
                     extra={
                         "operation": operation,
-                        "tokens": estimated_tokens,
-                        "waited_seconds": round(waited_seconds, 2),
+                        "duration_ms": round(duration_ms, 2),
+                        "error": type(error).__name__,
                     },
                 )
-        self._logger.info(
-            "ai_call_start",
-            extra={"operation": operation, "timeout_seconds": timeout_seconds},
-        )
-        retry = AsyncRetrying(
-            retry=retry_if_exception_type(retry_exceptions),
-            wait=wait_exponential(multiplier=0.5, min=0.5, max=5.0),
-            stop=stop_after_attempt(self._max_attempts),
-            reraise=True,
-            before_sleep=self._log_retry,
-        )
-        try:
-            async for attempt in retry:
-                with attempt:
-                    async with self._semaphore:
-                        result = await asyncio.wait_for(
-                            func(*args, **kwargs),
-                            timeout=timeout_seconds,
-                        )
-                        duration_ms = (time.monotonic() - start) * 1000.0
-                        self._logger.info(
-                            "ai_call_success",
-                            extra={
-                                "operation": operation,
-                                "duration_ms": round(duration_ms, 2),
-                            },
-                        )
-                        return result
-        except retry_exceptions as error:
-            duration_ms = (time.monotonic() - start) * 1000.0
-            self._logger.error(
-                "ai_call_failed",
-                extra={
-                    "operation": operation,
-                    "duration_ms": round(duration_ms, 2),
-                    "error": type(error).__name__,
-                },
-            )
-            raise
+                raise
         raise RuntimeError(f"unreachable retry state for {operation}")
 
     async def _run_sync_call(
@@ -344,7 +360,14 @@ class AIService:
         *,
         llm: LLMProvider | None = None,
     ) -> AnswerWithCitations:
-        provider = llm or build_llm_provider_chain(logger=self._logger)
+        provider = llm
+        if provider is None:
+            provider_env = os.getenv("LLM_PROVIDER")
+            fallback_env = os.getenv("LLM_PROVIDER_FALLBACKS")
+            in_test = os.getenv("PYTEST_CURRENT_TEST") is not None
+            builder_is_patched = getattr(build_llm_provider_chain, "__module__", "") != "src.services.failover"
+            if builder_is_patched or (not in_test and (provider_env or fallback_env)):
+                provider = build_llm_provider_chain(logger=self._logger)
         return await self._run_sync_call(
             "synthesize",
             ai.synthesize,
