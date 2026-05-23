@@ -20,13 +20,13 @@ jobs:
         run: pip install ruff mypy pytest-cov pytest-asyncio
 
       - name: Lint
-        run: ruff check src/ tests/ || true
+        run: ruff check src/ tests/ 
 
       - name: Type check
-        run: mypy src/ --ignore-missing-imports || true
+        run: mypy src/ --ignore-missing-imports 
 
       - name: Test
         run: pytest tests/test_ai_smoke.py -v
 
       - name: Docker build
-        run: docker build -t finalproj . || true
+        run: docker build -t finalproj . 
