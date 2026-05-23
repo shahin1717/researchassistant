@@ -11,6 +11,8 @@ from collections import deque
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TypeVar
+import threading
+from collections.abc import AsyncIterator
 
 import ai
 from ai.providers.base import LLMProvider, ProviderError
@@ -376,6 +378,38 @@ class AIService:
             llm=provider,
             timeout_seconds=self._synthesize_timeout_seconds,
         )
+
+    async def synthesize_stream(
+        self,
+        question: str,
+        sources: list[Source],
+        *,
+        llm: LLMProvider | None = None,
+    ) -> AsyncIterator[str]:
+        """Asynchronously yield streaming chunks from the synthesizer.
+
+        If the underlying LLM/provider exposes a streaming API, yields chunks
+        as they arrive. Otherwise yields the full answer as a single chunk.
+        """
+        loop = asyncio.get_running_loop()
+        q: "asyncio.Queue[str | object]" = asyncio.Queue()
+        sentinel = object()
+
+        def run_stream() -> None:
+            try:
+                for chunk in ai.synthesizer.synthesize_stream(question, sources, llm=llm):
+                    loop.call_soon_threadsafe(q.put_nowait, str(chunk))
+            finally:
+                loop.call_soon_threadsafe(q.put_nowait, sentinel)
+
+        thread = threading.Thread(target=run_stream, daemon=True)
+        thread.start()
+
+        while True:
+            part = await q.get()
+            if part is sentinel:
+                break
+            yield part
 
 
 def _read_int_env(name: str, default: int) -> int:
