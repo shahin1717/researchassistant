@@ -63,7 +63,7 @@ async def fetch_all(
         if isinstance(r, Exception):
             logger.warning(
                 "source_failed_in_orchestrator",
-                extra={"source": name, "error": type(r).__name__, "message": str(r)},
+                extra={"source": name, "error": type(r).__name__, "error_detail": str(r)},
             )
             continue
         all_sources.extend(r)
