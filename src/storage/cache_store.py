@@ -44,6 +44,14 @@ class CacheStore:
                     cost_usd REAL NOT NULL,
                     created_at REAL NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS cache_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    source TEXT NOT NULL,
+                    canonical_query TEXT NOT NULL,
+                    event TEXT NOT NULL CHECK(event IN ('hit', 'miss')),
+                    created_at REAL NOT NULL
+                );
                 """
             )
             self._conn.commit()
@@ -110,6 +118,22 @@ class CacheStore:
             )
             self._conn.commit()
 
+    def record_cache_event(self, source: str, canonical_query: str, event: str) -> None:
+        """Persist a cache hit/miss telemetry row."""
+
+        if event not in {"hit", "miss"}:
+            raise ValueError("event must be 'hit' or 'miss'")
+        created_at = time()
+        with self._lock:
+            self._conn.execute(
+                """
+                INSERT INTO cache_events (source, canonical_query, event, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (source, canonical_query, event, created_at),
+            )
+            self._conn.commit()
+
     def total_spend(self) -> float:
         """Return the total recorded spend across all rows."""
 
@@ -118,6 +142,77 @@ class CacheStore:
                 "SELECT COALESCE(SUM(cost_usd), 0.0) AS total_cost FROM spend_log"
             ).fetchone()
         return float(row["total_cost"] if row is not None else 0.0)
+
+    def spend_breakdown(self) -> list[dict[str, Any]]:
+        """Return spend totals grouped by provider/source."""
+
+        with self._lock:
+            rows = self._conn.execute(
+                """
+                SELECT source, SUM(cost_usd) AS cost
+                FROM spend_log
+                GROUP BY source
+                ORDER BY cost DESC
+                """
+            ).fetchall()
+        return [{"source": row["source"], "cost": float(row["cost"])} for row in rows]
+
+    def most_expensive_queries(self, limit: int = 5) -> list[dict[str, Any]]:
+        """Return the most expensive recorded queries."""
+
+        with self._lock:
+            rows = self._conn.execute(
+                """
+                SELECT canonical_query, cost_usd, created_at
+                FROM spend_log
+                ORDER BY cost_usd DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [
+            {
+                "canonical_query": row["canonical_query"],
+                "cost_usd": float(row["cost_usd"]),
+                "created_at": float(row["created_at"]),
+            }
+            for row in rows
+        ]
+
+    def cache_metrics(self) -> dict[str, int]:
+        """Return lightweight cache-entry metrics for dashboards."""
+
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT COUNT(*) AS cache_entries FROM cache_entries"
+            ).fetchone()
+            spend_row = self._conn.execute(
+                "SELECT COUNT(*) AS spend_entries FROM spend_log"
+            ).fetchone()
+            event_row = self._conn.execute(
+                "SELECT COUNT(*) AS cache_events FROM cache_events"
+            ).fetchone()
+        return {
+            "cache_entries": int(row["cache_entries"] if row is not None else 0),
+            "spend_entries": int(spend_row["spend_entries"] if spend_row is not None else 0),
+            "cache_events": int(event_row["cache_events"] if event_row is not None else 0),
+        }
+
+    def cache_hit_miss_counts(self) -> dict[str, int]:
+        """Return aggregate cache hit and miss counts."""
+
+        with self._lock:
+            rows = self._conn.execute(
+                """
+                SELECT event, COUNT(*) AS count
+                FROM cache_events
+                GROUP BY event
+                """
+            ).fetchall()
+        counts = {"hit": 0, "miss": 0}
+        for row in rows:
+            counts[str(row["event"])] = int(row["count"])
+        return counts
 
     def close(self) -> None:
         """Close the underlying SQLite connection."""

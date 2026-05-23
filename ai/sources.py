@@ -131,7 +131,7 @@ async def fetch_wikipedia(
 # ---------------------------------------------------------------------------
 
 _ARXIV_URL = "https://export.arxiv.org/api/query"
-_ATOM_NS = "{https://www.w3.org/2005/Atom}"
+_ATOM_NS = "{http://www.w3.org/2005/Atom}"
 
 
 async def fetch_arxiv(
@@ -388,3 +388,4 @@ async def fetch_web(
         return []
     provider = provider or get_web_search_provider()
     return await provider.search(query, max_results=max_results, client=client)
+

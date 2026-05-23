@@ -1,160 +1,147 @@
-# _[Project Name]_
+# Async Research Assistant
 
-> _[One-sentence elevator pitch.]_ For example: *"A Smart Lost & Found service that matches lost and found items via a vision-language model and embedding similarity."*
+Async Research Assistant answers a research question by querying Wikipedia,
+arXiv, and a web-search provider in parallel, caching source results in SQLite,
+and synthesizing a cited answer with an LLM.
 
-**Team:** _[Team Name]_  •  **Topic:** _[1 / 2 / 3 / 4]_  •  **Course:** AI-ENG-110 Software Engineering, AI Academy
+**Team:** Shahin, Raul, Nicat (Niijat)  
+**Topic:** 4 — Async Research Assistant  
+**Target tag:** `v1.0-final`
 
-**Due:** **May 23, 2026 at 23:59 (UTC+4)**
-
----
-
-## Quick start
+## Setup
 
 ```bash
-# 1. Clone & install
-git clone https://github.com/your-team/your-repo
-cd your-repo
-python -m venv .venv && source .venv/bin/activate
+git clone https://github.com/shahin1717/researchassistant
+cd researchassistant
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-
-# 2. Configure
-cp .env.example .env       # then fill in real API keys
-# (DO NOT commit .env — it is in .gitignore)
-
-# 3. Run the smoke tests
-pytest tests/test_ai_smoke.py -v   # provided smoke tests
-pytest                              # your full suite
-
-# 4. Run the demo
-python -m <yourpackage> demo
+cp .env.example .env
 ```
 
-## Run with Docker
+Fill `.env` with the provider keys you plan to use. Do not commit real keys.
+
+## Environment Variables
+
+| Variable | Required | Default | Purpose |
+|---|---:|---|---|
+| `LLM_PROVIDER` | yes | `gemini` | `gemini`, `openai`, or `anthropic` |
+| `LLM_MODEL` | no | `gemini-2.0-flash` | Model used for synthesis |
+| `GOOGLE_API_KEY` | provider-specific | empty | Gemini API key |
+| `OPENAI_API_KEY` | provider-specific | empty | OpenAI API key |
+| `ANTHROPIC_API_KEY` | provider-specific | empty | Anthropic API key |
+| `WEB_SEARCH_PROVIDER` | no | `tavily` | `tavily`, `serper`, or `duckduckgo` |
+| `TAVILY_API_KEY` | provider-specific | empty | Tavily search key |
+| `SERPER_API_KEY` | provider-specific | empty | Serper search key |
+| `CACHE_DIR` | no | `./.cache` | SQLite cache and telemetry directory |
+| `CACHE_TTL_SECONDS` | no | `86400` | Cache entry lifetime |
+| `PER_SOURCE_TIMEOUT_SECONDS` | no | `10` | Timeout per source fetch |
+| `MAX_SOURCES_PER_QUERY` | no | `3` | Results fetched per source |
+| `MAX_PARALLEL` | no | `10` | Async concurrency bound |
+| `LOG_LEVEL` | no | `INFO` | Python logging level |
+
+## CLI
+
+Ask a question:
 
 ```bash
-docker build -t finalproj .
-docker run --env-file .env -p 8000:8000 finalproj
-# for Topics 1 & 2 with HTTP server: hit http://localhost:8000
+python -m src ask "What is photosynthesis and what are its main stages?"
 ```
 
-## Environment variables
-
-| Variable | Required? | Default | What it controls |
-|---|---|---|---|
-| `LLM_PROVIDER` | yes | `anthropic` | `anthropic` \| `openai` \| `gemini` |
-| `LLM_MODEL` | yes | (provider-specific) | model id |
-| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_API_KEY` | one of, yes | — | key for the chosen provider |
-| `EMBEDDING_PROVIDER` | sometimes | `openai` | `openai` \| `gemini` (Topics 1, 3 only) |
-| `LOG_LEVEL` | no | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
-| `DATABASE_URL` | no | `sqlite:///./app.db` | SQLite path |
-| `MAX_PARALLEL` | no | `10` | semaphore bound for concurrent calls |
-| _[...]_ | _[...]_ | _[...]_ | _[...]_ |
-
-The full list is in `.env.example`. **Do not commit a real `.env`.**
-
-## How to run the demo
+Restrict sources and bypass cache:
 
 ```bash
-# CLI
-python -m <yourpackage> <command> [args]
-
-# HTTP (Topics 1, 2)
-uvicorn src.api:app --host 0.0.0.0 --port 8000
-curl -X POST http://localhost:8000/<endpoint> ...
+python -m src ask "What is chlorophyll?" --sources wiki,arxiv --no-cache
 ```
 
-_[Add the exact curl commands here, with sample input and expected output.]_
-
-## Sequential vs concurrent benchmark
-
-| Workload | $N$ | Sequential | Concurrent (sem=10) | Speedup |
-|---|---|---|---|---|
-| _[describe the workload]_ | _[20]_ | _[42.1 s]_ | _[7.3 s]_ | _[5.8×]_ |
-
-**Reproduce:**
-```bash
-python scripts/bench.py --N 20
-```
-
-Bottleneck after the parallelization is **_[what bottleneck — e.g. provider rate limit, RTT, DB writes]_**. See `report/report.pdf` §_[N]_ for details.
-
-## Testing
+Show cost telemetry from SQLite:
 
 ```bash
-pytest --cov=src --cov-report=term-missing
+python -m src cost-report
 ```
 
-- Total coverage: **_[72]_%**
-- Provided AI smoke tests: **passing**
-- All tests run offline (AI module mocked; HTTP layer mocked with `respx` / `unittest.mock`).
+The CLI rejects empty questions and questions longer than 500 characters before
+calling any source or LLM provider.
 
-## Project layout
+## Streamlit Web UI
 
-```
-.
-├── ai/                       # PROVIDED — do not modify
-├── src/
-│   ├── config.py
-│   ├── models.py
-│   ├── services/             # wrappers around ai/, retries, logging
-│   ├── core/                 # business logic
-│   ├── concurrency/          # async orchestration
-│   ├── storage/              # SQLite + filesystem
-│   ├── cli.py
-│   └── api.py                # HTTP server (Topics 1, 2)
-├── tests/
-├── data/                     # sample inputs
-├── artefacts/                # outputs of demo runs
-├── scripts/
-│   ├── demo.py
-│   └── bench.py
-├── report/
-│   ├── report.tex
-│   └── report.pdf
-├── Dockerfile
-├── requirements.txt
-├── .env.example
-└── README.md
+```bash
+streamlit run src/app.py
 ```
 
-## Architecture in one diagram
+The web UI includes a research tab and a developer dashboard with cache
+hit/miss telemetry, cache entry counts, total spend, provider spend breakdowns,
+and the most expensive queries.
 
-_[Embed your architecture diagram PNG here, the same one as in the report and slides.]_
+## Docker
 
-```
-+-------+   +----------+
-|  CLI  |   | HTTP API |
-+---+---+   +----+-----+
-    |            |
-    v            v
-+---------+ +-----------+
-|  core   | | concurrency|
-+----+----+ +-----+-----+
-     |             |
-     v             v
-+---------------------+   +----------+
-| service (retries,   |-->|  ai/     | (provided)
-| cache, logging)     |   +----------+
-+----------+----------+
-           |
-           v
-   +--------------+
-   | SQLite + FS  |
-   +--------------+
+Build and run the Streamlit app:
+
+```bash
+docker build -t researchassistant:latest .
+docker run --env-file .env -p 8501:8501 researchassistant:latest
 ```
 
-## Limitations
+Open `http://localhost:8501`.
 
-- _[Brittleness 1, e.g. no multi-provider failover]_
-- _[Brittleness 2]_
-- _[Brittleness 3]_
+Run the CLI inside the image:
 
-See `report/report.pdf` §_[N]_ for a full discussion.
+```bash
+docker run --env-file .env researchassistant:latest python -m src ask "What is photosynthesis?"
+```
 
-## Tools & acknowledgements
+The Dockerfile uses a builder stage plus a slim runtime stage.
 
-We used AI assistants (Claude / Cursor / etc.) as described in §_[N]_ of the report and in `templates/CONTRIBUTION_STATEMENT.md`.
+## Tests
 
-## License
+Run the offline SE layer suite:
 
-This is academic coursework, not a published library. _[Optionally add MIT / Apache-2.0 etc. if you want it to be reusable.]_
+```bash
+pytest tests/test_se_layer.py -q
+```
+
+Run the full suite:
+
+```bash
+pytest -q
+```
+
+The SE layer tests mock source fetchers and LLM synthesis, so they require no
+network access and no real API keys.
+
+## Sequential vs Parallel Benchmark
+
+Shahin's integrated benchmark result:
+
+| Workload | Sequential | Parallel | Speedup |
+|---|---:|---:|---:|
+| Wikipedia, arXiv, and web source fetching | 17.35s | 4.37s | 4.0x |
+
+Reproduce with:
+
+```bash
+python scripts/bench.py
+```
+
+## Project Layout
+
+```text
+ai/                 Provided AI contract; do not modify
+src/config.py       Pydantic settings and logging
+src/models.py       Pydantic SE-layer models
+src/concurrency/    Parallel source orchestrator
+src/core/           Research pipeline coordinator
+src/services/       Cache and AI wrappers
+src/storage/        SQLite cache and telemetry
+src/cli.py          argparse CLI
+src/app.py          Streamlit UI
+tests/              Offline and smoke tests
+scripts/bench.py    Sequential vs parallel benchmark
+```
+
+## Notes
+
+- Source and synthesis results depend on configured API keys and provider
+  availability.
+- SQLite cache and telemetry are stored under `CACHE_DIR`.
+- The `ai/` package is treated as a locked contract for the coursework.

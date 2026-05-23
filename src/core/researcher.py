@@ -16,6 +16,12 @@ from src.storage.cache_store import CacheStore
 logger = logging.getLogger(__name__)
 
 
+def _source_matches_cache_key(source: Source, cache_key: str) -> bool:
+    if cache_key == "wiki":
+        return source.origin == "wikipedia"
+    return source.origin == cache_key
+
+
 async def research(
     question: str,
     *,
@@ -76,7 +82,7 @@ async def research(
 
             # Update cache for each query origin
             for src in sources_to_query:
-                src_list = [s for s in new_sources if s.origin == src]
+                src_list = [s for s in new_sources if _source_matches_cache_key(s, src)]
                 serialized = json.dumps([s.model_dump() for s in src_list])
                 cache.set(src, question, serialized)
 
