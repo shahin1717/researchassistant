@@ -152,15 +152,44 @@ class AIService:
         return self._synthesize_timeout_seconds
 
     @staticmethod
+    def _estimate_value_chars(value: object, *, depth: int = 0) -> int:
+        if depth >= 2:
+            return 8
+        if value is None:
+            return 4
+        if isinstance(value, bool):
+            return 5
+        if isinstance(value, (int, float)):
+            return 8
+        if isinstance(value, str):
+            return min(len(value), 4096)
+        if isinstance(value, (bytes, bytearray)):
+            return min(len(value), 4096)
+        if isinstance(value, dict):
+            estimated = 2
+            for key, item in list(value.items())[:5]:
+                estimated += len(str(key))
+                estimated += AIService._estimate_value_chars(item, depth=depth + 1)
+            estimated += max(0, len(value) - 5) * 8
+            return min(estimated, 4096)
+        if isinstance(value, (list, tuple, set, frozenset)):
+            items = list(value)[:5]
+            estimated = 2 + max(0, len(value) - 5) * 8
+            estimated += sum(AIService._estimate_value_chars(item, depth=depth + 1) for item in items)
+            return min(estimated, 4096)
+        return len(type(value).__name__)
+
+    @staticmethod
     def _estimate_tokens(operation: str, args: tuple[object, ...], kwargs: dict[str, object]) -> int:
-        parts: list[str] = [operation]
-        parts.extend(str(value) for value in args)
-        parts.extend(
-            f"{key}={value}"
+        estimated_chars = len(operation)
+        estimated_chars += sum(AIService._estimate_value_chars(value) for value in args)
+        estimated_chars += sum(
+            len(key) + 1 + AIService._estimate_value_chars(value)
             for key, value in sorted(kwargs.items())
             if key not in {"client", "provider", "llm"}
         )
-        estimated = max(1, math.ceil(len(" ".join(parts)) / 4))
+        estimated_chars = min(estimated_chars, 16384)
+        estimated = max(1, math.ceil(estimated_chars / 4))
         return estimated
 
     def _retry_exceptions(self) -> tuple[type[BaseException], ...]:
