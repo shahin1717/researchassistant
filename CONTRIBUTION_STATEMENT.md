@@ -38,6 +38,7 @@
 **Owned (sole author):**
 - `src/services/ai_service.py` — `AIService` class, Tenacity retry logic, `asyncio.Semaphore` concurrency bound, `asyncio.wait_for` per-call timeout, `TokenBudgetLimiter` sliding-window TPM rate limiter
 - `src/services/cache.py` — `QueryCache`, `canonicalize_query()`, TTL cleanup, hit/miss event logging
+- `src/services/failover.py` and `src/services/tracing.py`
 - `src/storage/cache_store.py` — SQLite backend, 3 tables (`cache_entries`, `spend_log`, `cache_events`), thread-safe `RLock`, telemetry helpers
 - `src/models.py` — `ResearchSession` and `QueryResult` frozen Pydantic models
 - PRs: #3 (services initial), #5 (services v2 — User-Agent fix, arXiv HTTPS, guard dev snippet)
